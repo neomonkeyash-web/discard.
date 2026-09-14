@@ -130,6 +130,18 @@
   <div class="crumb"><span>01 — マスク</span><span id="orientLbl" class="mono">縦</span></div>
 
   <div class="sec">
+    <div class="sechead"><span class="num mono">00</span><span class="name">写真をなぞる</span></div>
+    <label class="bigbtn" for="tracePhotoInput"><span>写真を選ぶ</span><span class="n">→</span></label>
+    <input type="file" id="tracePhotoInput" accept="image/*">
+    <div class="row2" style="margin-top:10px;">
+      <button id="refShowOn" class="on">写真を表示</button>
+      <button id="refShowOff">非表示</button>
+    </div>
+    <div class="slider"><span class="lbl">写真の濃さ</span><input type="range" id="refOpacity" min="0" max="100" value="40"><span class="val" id="refOpacityV">40</span></div>
+    <p class="note">ここで選んだ写真は、下に薄く表示された状態でなぞれます。そのまま02の抽出にも引き継がれます(あとから別の写真に差し替えることもできます)。</p>
+  </div>
+
+  <div class="sec">
     <div class="row2">
       <button id="oPortrait" class="on">縦</button>
       <button id="oLandscape">横</button>
@@ -153,6 +165,7 @@
       <button id="tSparkle">キラキラ</button>
       <button id="tLine">直線</button>
       <button id="tWave">波線</button>
+      <button id="tSpiral">うずまき</button>
       <button id="tText">テキスト</button>
     </div>
 
@@ -165,6 +178,7 @@
     <div class="slider" id="sidesRow" style="display:none;"><span class="lbl">角の数</span><input type="range" id="polySides" min="3" max="24" value="5"><span class="val" id="polySidesV">5</span></div>
     <div class="slider" id="innerRow" style="display:none;"><span class="lbl">とがり具合</span><input type="range" id="innerRatio" min="10" max="90" value="45"><span class="val" id="innerRatioV">45</span></div>
     <div class="slider" id="arcRow" style="display:none;"><span class="lbl">弧のサイズ</span><input type="range" id="arcSize" min="4" max="60" value="20"><span class="val" id="arcSizeV">20</span></div>
+    <div class="slider" id="turnsRow" style="display:none;"><span class="lbl">巻き数</span><input type="range" id="turnsN" min="1" max="10" value="4"><span class="val" id="turnsNV">4</span></div>
 
     <p class="note">選択 — タップで選ぶ、ドラッグで動かす、右下の赤いハンドルでサイズ変更。<br>ペン — フリーハンドで描く(あとから動かせない下地の線)。<br>曲線 — フリーハンドで描く、あとから選んで動かせる。<br>うねうね — 弧のサイズ通りに波打つ線を、フリーハンドの動きで描く。<br>その他の図形 — ドラッグして配置とサイズを決める(テキストはタップして入力)。</p>
 
@@ -228,6 +242,13 @@
       <button id="selBack">最背面へ</button>
     </div>
     <div class="row2" style="margin-top:6px;">
+      <button id="selDuplicate">複製(等倍)</button>
+    </div>
+    <div class="row2" style="margin-top:6px;">
+      <button id="selShrink">縮小</button>
+      <button id="selGrow">拡大</button>
+    </div>
+    <div class="row2" style="margin-top:6px;">
       <button id="selEditText" class="hidden">文字を編集</button>
       <button id="selDelete">削除</button>
     </div>
@@ -250,6 +271,10 @@
     <div class="row2">
       <button id="mDots" class="on">点描</button>
       <button id="mLines">細線</button>
+    </div>
+    <div class="row2" style="margin-top:6px;">
+      <button id="mNoiseColor">砂嵐(カラー)</button>
+      <button id="mNoiseGray">砂嵐(白黒)</button>
     </div>
   </div>
 
@@ -423,6 +448,7 @@ $('ffAdd').addEventListener('click',function(){
 var PORTRAIT_W=1000, PORTRAIT_H=1414;
 var MW=PORTRAIT_W, MH=PORTRAIT_H;
 var orientation='portrait';
+var photoImg=null, refShow=true, refOpacity=40;
 
 var maskCanvas=$('maskCanvas'), mCtx=maskCanvas.getContext('2d',{willReadFrequently:true});
 var penLayer=document.createElement('canvas'), penCtx=penLayer.getContext('2d',{willReadFrequently:true});
@@ -437,6 +463,22 @@ var objects=[];
 var selected=null;
 var tool='select', fillMode='fill', strokeW=8, polySides=5, innerRatio=45, arcSize=20;
 var showGrid=false, snap=false, cols=6, rows=8;
+
+/* ---------- 写真をなぞる(参照表示) ---------- */
+$('tracePhotoInput').addEventListener('change',function(e){
+  var file=e.target.files[0]; if(!file) return;
+  var rd=new FileReader();
+  rd.onload=function(ev){
+    var im=new Image();
+    im.onload=function(){ photoImg=im; drawAll(); };
+    im.src=ev.target.result;
+  };
+  rd.readAsDataURL(file);
+  e.target.value='';
+});
+$('refShowOn').addEventListener('click',function(){ refShow=true; $('refShowOn').classList.add('on'); $('refShowOff').classList.remove('on'); drawAll(); });
+$('refShowOff').addEventListener('click',function(){ refShow=false; $('refShowOff').classList.add('on'); $('refShowOn').classList.remove('on'); drawAll(); });
+$('refOpacity').addEventListener('input',function(){ refOpacity=+$('refOpacity').value; $('refOpacityV').textContent=refOpacity; drawAll(); });
 
 function pushHistory(){ objects._h=objects._h||[]; objects._h.push(JSON.stringify(objects)); if(objects._h.length>30) objects._h.shift(); }
 $('tUndo').addEventListener('click',function(){
@@ -472,15 +514,18 @@ $('oPortrait').addEventListener('click',function(){ setOrientation('portrait'); 
 $('oLandscape').addEventListener('click',function(){ setOrientation('landscape'); });
 
 /* ---------- ツール選択 ---------- */
-var toolIds=['tSelect','tPen','tCurve','tScallop','tRect','tCircle','tPolygon','tStar','tBurst','tDiamond','tSparkle','tLine','tWave','tText'];
-var toolMap={tSelect:'select',tPen:'pen',tCurve:'curve',tScallop:'scallop',tRect:'rect',tCircle:'circle',tPolygon:'polygon',tStar:'star',tBurst:'burst',tDiamond:'diamond',tSparkle:'sparkle',tLine:'line',tWave:'wave',tText:'text'};
+var toolIds=['tSelect','tPen','tCurve','tScallop','tRect','tCircle','tPolygon','tStar','tBurst','tDiamond','tSparkle','tLine','tWave','tSpiral','tText'];
+var toolMap={tSelect:'select',tPen:'pen',tCurve:'curve',tScallop:'scallop',tRect:'rect',tCircle:'circle',tPolygon:'polygon',tStar:'star',tBurst:'burst',tDiamond:'diamond',tSparkle:'sparkle',tLine:'line',tWave:'wave',tSpiral:'spiral',tText:'text'};
+var turnsN=4;
 function switchTool(t){
   tool=t;
   toolIds.forEach(function(x){ $(x).classList.toggle('on', toolMap[x]===t); });
   $('sidesRow').style.display=(tool==='polygon'||tool==='star'||tool==='burst'||tool==='sparkle')?'grid':'none';
   $('innerRow').style.display=(tool==='star'||tool==='burst'||tool==='sparkle')?'grid':'none';
   $('arcRow').style.display=(tool==='scallop')?'grid':'none';
+  $('turnsRow').style.display=(tool==='spiral')?'grid':'none';
 }
+$('turnsN').addEventListener('input',function(){ turnsN=+$('turnsN').value; $('turnsNV').textContent=turnsN; });
 toolIds.forEach(function(id){
   $(id).addEventListener('click',function(){
     switchTool(toolMap[id]);
@@ -587,6 +632,18 @@ function drawObject(ctx,ob){
       s===0?ctx.moveTo(px2,py2):ctx.lineTo(px2,py2);
     }
     ctx.stroke();
+  } else if(ob.type==='spiral'){
+    var cx3=ob.x+ob.w/2, cy3=ob.y+ob.h/2, rx3=Math.abs(ob.w)/2, ry3=Math.abs(ob.h)/2;
+    var turns=ob.turns||4, steps=Math.max(24,turns*40);
+    ctx.beginPath();
+    for(var k=0;k<=steps;k++){
+      var tt=k/steps;
+      var a2=tt*turns*Math.PI*2;
+      var rr=tt;
+      var sx=cx3+Math.cos(a2)*rx3*rr, sy=cy3+Math.sin(a2)*ry3*rr;
+      k===0?ctx.moveTo(sx,sy):ctx.lineTo(sx,sy);
+    }
+    ctx.stroke();
   } else if(ob.type==='curve'||ob.type==='scallop'){
     var abs=(ob.points||[]).map(function(p){ return [ob.x+p[0], ob.y+p[1]]; });
     smoothPath(ctx,abs); ctx.stroke();
@@ -606,10 +663,24 @@ function objBounds(ob){
   }
   return {x:Math.min(ob.x,ob.x+(ob.w||0)), y:Math.min(ob.y,ob.y+(ob.h||0)), w:Math.abs(ob.w||0), h:Math.abs(ob.h||0)};
 }
-function drawAll(){
+function paintBase(){
   mCtx.clearRect(0,0,MW,MH);
+  mCtx.fillStyle='#ffffff'; mCtx.fillRect(0,0,MW,MH);
+  if(refShow && photoImg){
+    var s=Math.max(MW/photoImg.width, MH/photoImg.height);
+    var dw=photoImg.width*s, dh=photoImg.height*s;
+    mCtx.save();
+    mCtx.globalAlpha=refOpacity/100;
+    mCtx.drawImage(photoImg,(MW-dw)/2,(MH-dh)/2,dw,dh);
+    mCtx.restore();
+    mCtx.globalCompositeOperation='multiply';
+  }
   mCtx.drawImage(penLayer,0,0);
   objects.forEach(function(ob){ drawObject(mCtx,ob); });
+  mCtx.globalCompositeOperation='source-over';
+}
+function drawAll(){
+  paintBase();
   if(showGrid){
     mCtx.strokeStyle='rgba(255,0,0,.35)'; mCtx.lineWidth=1;
     var cw=MW/cols, rh=MH/rows;
@@ -650,7 +721,8 @@ function openTextModal(initial,cb){
   textModalCb=cb;
   $('textModalInput').value=initial||'';
   $('textModal').classList.remove('hidden');
-  setTimeout(function(){ $('textModalInput').focus(); $('textModalInput').select(); },50);
+  $('textModalInput').focus();
+  $('textModalInput').select();
 }
 function closeTextModal(){ $('textModal').classList.add('hidden'); textModalCb=null; }
 $('textModalCancel').addEventListener('click',closeTextModal);
@@ -662,8 +734,22 @@ $('textModalOk').addEventListener('click',function(){
 });
 
 function down(e){
-  e.preventDefault();
   var p=maskPos(e);
+
+  if(tool==='text'){
+    var sp0=snapPt(p.x,p.y);
+    openTextModal('',function(txt){
+      if(txt){
+        pushHistory();
+        var ob={type:'text',x:sp0.x,y:sp0.y,w:0,h:0,rot:0,text:txt,font:FONTS[0],fontSize:64};
+        objects.push(ob); selected=ob; updateSelPanel(); drawAll();
+        switchTool('select');
+      }
+    });
+    return;
+  }
+
+  e.preventDefault();
 
   if(tool==='select'){
     if(selected && hitHandle(p,selected)){
@@ -699,19 +785,6 @@ function down(e){
     return;
   }
 
-  if(tool==='text'){
-    var sp0=snapPt(p.x,p.y);
-    openTextModal('',function(txt){
-      if(txt){
-        pushHistory();
-        var ob={type:'text',x:sp0.x,y:sp0.y,w:0,h:0,rot:0,text:txt,font:FONTS[0],fontSize:64};
-        objects.push(ob); selected=ob; updateSelPanel(); drawAll();
-        switchTool('select');
-      }
-    });
-    return;
-  }
-
   var sp2=snapPt(p.x,p.y);
   drag={mode:'create',start:sp2};
 }
@@ -720,7 +793,20 @@ function wobbleOffset(dist,amp){
   return Math.sin(dist/wavelength*Math.PI*2)*amp;
 }
 function move(e){
-  if(!drag) return; e.preventDefault();
+  if(!drag) return;
+  e.preventDefault();
+  pendingEvent=e;
+  if(!rafScheduled){
+    rafScheduled=true;
+    requestAnimationFrame(function(){
+      rafScheduled=false;
+      if(pendingEvent) actualMove(pendingEvent);
+    });
+  }
+}
+var pendingEvent=null, rafScheduled=false;
+function actualMove(e){
+  if(!drag) return;
   var p=maskPos(e);
 
   if(drag.mode==='pen'){ penCtx.lineTo(p.x,p.y); penCtx.stroke(); drawAll(); return; }
@@ -738,8 +824,7 @@ function move(e){
     } else {
       freehand.raw.push([p.x,p.y]);
     }
-    mCtx.clearRect(0,0,MW,MH); mCtx.drawImage(penLayer,0,0);
-    objects.forEach(function(ob){ drawObject(mCtx,ob); });
+    paintBase();
     mCtx.strokeStyle='#000000'; mCtx.lineWidth=strokeW; mCtx.lineCap='round'; mCtx.lineJoin='round';
     smoothPath(mCtx,freehand.raw); mCtx.stroke();
     return;
@@ -764,11 +849,10 @@ function move(e){
   }
   if(drag.mode==='create'){
     var sp=snapPt(p.x,p.y);
-    mCtx.clearRect(0,0,MW,MH); mCtx.drawImage(penLayer,0,0);
-    objects.forEach(function(ob){ drawObject(mCtx,ob); });
+    paintBase();
     var ghost={type:tool,x:Math.min(drag.start.x,sp.x),y:Math.min(drag.start.y,sp.y),
       w:Math.abs(sp.x-drag.start.x),h:Math.abs(sp.y-drag.start.y),rot:0,
-      fillMode:fillMode,strokeWidth:strokeW,sides:polySides,inner:innerRatio};
+      fillMode:fillMode,strokeWidth:strokeW,sides:polySides,inner:innerRatio,turns:turnsN};
     if(tool==='line'||tool==='wave'){ ghost.x=drag.start.x; ghost.y=drag.start.y; ghost.w=sp.x-drag.start.x; ghost.h=sp.y-drag.start.y; }
     mCtx.globalAlpha=0.5; drawObject(mCtx,ghost); mCtx.globalAlpha=1;
     drag.ghost=ghost;
@@ -839,6 +923,29 @@ $('selBack').addEventListener('click',function(){
   if(!selected) return; pushHistory();
   var i=objects.indexOf(selected); objects.splice(i,1); objects.unshift(selected); drawAll();
 });
+$('selDuplicate').addEventListener('click',function(){
+  if(!selected) return; pushHistory();
+  var copy=JSON.parse(JSON.stringify(selected));
+  copy.x=(copy.x||0)+24; copy.y=(copy.y||0)+24;
+  objects.push(copy); selected=copy; updateSelPanel(); drawAll();
+});
+function scaleSelected(factor){
+  if(!selected) return;
+  pushHistory();
+  var ob=selected;
+  if(ob.type==='text'){
+    ob.fontSize=Math.max(8,(ob.fontSize||60)*factor);
+  } else {
+    var cx=ob.x+(ob.w||0)/2, cy=ob.y+(ob.h||0)/2;
+    var newW=(ob.w||0)*factor, newH=(ob.h||0)*factor;
+    if(ob.points){ ob.points=ob.points.map(function(p){ return [p[0]*factor,p[1]*factor]; }); }
+    ob.x=cx-newW/2; ob.y=cy-newH/2; ob.w=newW; ob.h=newH;
+    if(ob.strokeWidth) ob.strokeWidth=Math.max(1,ob.strokeWidth*factor);
+  }
+  drawAll();
+}
+$('selGrow').addEventListener('click',function(){ scaleSelected(1.15); });
+$('selShrink').addEventListener('click',function(){ scaleSelected(1/1.15); });
 $('selEditText').addEventListener('click',function(){
   if(!selected||selected.type!=='text') return;
   openTextModal(selected.text||'',function(t){
@@ -851,18 +958,101 @@ $('selDelete').addEventListener('click',function(){
   selected=null; updateSelPanel(); drawAll();
 });
 
+/* ---------- キーボードショートカット(Mac/Windows) ---------- */
+var clipboard=null;
+function isTyping(){
+  var t=document.activeElement;
+  return t && (t.tagName==='INPUT' || t.tagName==='TEXTAREA' || t.tagName==='SELECT');
+}
+document.addEventListener('keydown',function(e){
+  if(isTyping()) return;
+  if(!$('scMask').classList.contains('on')) return;
+  var mod=e.metaKey||e.ctrlKey;
+
+  if(mod && (e.key==='z'||e.key==='Z')){
+    e.preventDefault();
+    if(objects._h && objects._h.length){
+      var prev=JSON.parse(objects._h.pop());
+      objects.length=0; prev.forEach(function(o){ objects.push(o); });
+      selected=null; updateSelPanel(); drawAll();
+    }
+    return;
+  }
+  if(mod && (e.key==='d'||e.key==='D')){
+    e.preventDefault();
+    if(selected){
+      pushHistory();
+      var copy=JSON.parse(JSON.stringify(selected));
+      copy.x=(copy.x||0)+24; copy.y=(copy.y||0)+24;
+      objects.push(copy); selected=copy; updateSelPanel(); drawAll();
+    }
+    return;
+  }
+  if(mod && (e.key==='c'||e.key==='C')){
+    if(selected){ clipboard=JSON.parse(JSON.stringify(selected)); }
+    return;
+  }
+  if(mod && (e.key==='v'||e.key==='V')){
+    e.preventDefault();
+    if(clipboard){
+      pushHistory();
+      var paste=JSON.parse(JSON.stringify(clipboard));
+      paste.x=(paste.x||0)+24; paste.y=(paste.y||0)+24;
+      objects.push(paste); selected=paste; updateSelPanel(); drawAll();
+    }
+    return;
+  }
+  if(e.key==='Delete'||e.key==='Backspace'){
+    if(selected){
+      e.preventDefault(); pushHistory();
+      var i=objects.indexOf(selected); if(i>-1) objects.splice(i,1);
+      selected=null; updateSelPanel(); drawAll();
+    }
+    return;
+  }
+  if(e.key==='Escape'){
+    selected=null; updateSelPanel(); drawAll();
+    return;
+  }
+  if(e.key==='+'||e.key==='='){
+    if(selected){ e.preventDefault(); scaleSelected(1.15); }
+    return;
+  }
+  if(e.key==='-'||e.key==='_'){
+    if(selected){ e.preventDefault(); scaleSelected(1/1.15); }
+    return;
+  }
+  if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].indexOf(e.key)>-1){
+    if(!selected) return;
+    e.preventDefault();
+    var step=e.shiftKey?10:1;
+    if(e.key==='ArrowUp') selected.y-=step;
+    if(e.key==='ArrowDown') selected.y+=step;
+    if(e.key==='ArrowLeft') selected.x-=step;
+    if(e.key==='ArrowRight') selected.x+=step;
+    drawAll();
+  }
+});
+
 drawAll();
 
 /* ==================================================================
    抽出 — ペン層+オブジェクトを合成してインク判定→写真から色を抜く
    ================================================================== */
 var outCanvas=$('outCanvas'), oCtx=outCanvas.getContext('2d');
-var photoImg=null, mode='dots', density=5, dotSize=4;
+var mode='dots', density=5, dotSize=4;
 function sizeOutCanvas(){ outCanvas.width=MW; outCanvas.height=MH; }
 sizeOutCanvas();
 
-$('mDots').addEventListener('click',function(){ mode='dots'; $('mDots').classList.add('on'); $('mLines').classList.remove('on'); renderOutput(); });
-$('mLines').addEventListener('click',function(){ mode='lines'; $('mLines').classList.add('on'); $('mDots').classList.remove('on'); renderOutput(); });
+var modeButtons=['mDots','mLines','mNoiseColor','mNoiseGray'];
+var modeMap={mDots:'dots',mLines:'lines',mNoiseColor:'noiseColor',mNoiseGray:'noiseGray'};
+modeButtons.forEach(function(id){
+  $(id).addEventListener('click',function(){
+    mode=modeMap[id];
+    modeButtons.forEach(function(x){ $(x).classList.toggle('on', x===id); });
+    renderOutput();
+  });
+});
 $('density').addEventListener('input',function(){ density=+$('density').value; $('densityV').textContent=density; renderOutput(); });
 $('dotSize').addEventListener('input',function(){ dotSize=+$('dotSize').value; $('dotSizeV').textContent=dotSize; renderOutput(); });
 
@@ -955,7 +1145,7 @@ function renderOutput(){
   var stride=Math.max(1,Math.round(22-density*2));
   var count=0;
   oCtx.lineCap='round';
-  oCtx.globalCompositeOperation=risoOn?'multiply':'source-over';
+  oCtx.globalCompositeOperation=(risoOn && mode!=='noiseColor' && mode!=='noiseGray')?'multiply':'source-over';
   var rgbA=risoOn?rgbOf(inkA):null, rgbB=risoOn?rgbOf(inkB):null;
 
   for(var y=0;y<MH;y+=stride){
@@ -964,7 +1154,12 @@ function renderOutput(){
       var mLumV=(maskData[idx]+maskData[idx+1]+maskData[idx+2])/3;
       if(mLumV<200){
         var pr=photoData[idx], pg=photoData[idx+1], pb=photoData[idx+2];
-        if(risoOn){
+        if(mode==='noiseColor'){
+          pr=Math.floor(Math.random()*256); pg=Math.floor(Math.random()*256); pb=Math.floor(Math.random()*256);
+        } else if(mode==='noiseGray'){
+          var gv=Math.floor(Math.random()*256); pr=gv; pg=gv; pb=gv;
+        }
+        if(risoOn && mode!=='noiseColor' && mode!=='noiseGray'){
           var pl=(pr+pg+pb)/3;
           var pick=pl<128?rgbA:rgbB;
           oCtx.fillStyle='rgb('+pick[0]+','+pick[1]+','+pick[2]+')';
@@ -974,12 +1169,14 @@ function renderOutput(){
         oCtx.strokeStyle=oCtx.fillStyle;
         if(mode==='dots'){
           oCtx.beginPath(); oCtx.arc(x,y,dotSize/2,0,Math.PI*2); oCtx.fill();
-        } else {
+        } else if(mode==='lines'){
           var ang=Math.random()*Math.PI;
           var len=dotSize*1.6;
           var dx2=Math.cos(ang)*len/2, dy2=Math.sin(ang)*len/2;
           oCtx.lineWidth=Math.max(1,dotSize/4);
           oCtx.beginPath(); oCtx.moveTo(x-dx2,y-dy2); oCtx.lineTo(x+dx2,y+dy2); oCtx.stroke();
+        } else {
+          oCtx.fillRect(x-dotSize/2,y-dotSize/2,dotSize,dotSize);
         }
         count++;
       }
